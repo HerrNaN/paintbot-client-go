@@ -11,6 +11,8 @@ const (
 	Explode Action = "EXPLODE"
 )
 
+var Movements = []Action {Left,Right,Up,Down}
+
 type Tile string
 
 const (

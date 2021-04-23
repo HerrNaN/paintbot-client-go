@@ -1,21 +1,52 @@
 package maputility
 
 import (
+	"fmt"
 	"paintbot-client/models"
 	"paintbot-client/utilities/arrays"
+
+	"github.com/RyanCarrier/dijkstra"
 )
+
+type Graph interface {
+	Shortest(from int, to int) (dijkstra.BestPath, error)
+}
 
 // Utility for getting information from the map object in a bit more developer friendly format
 type MapUtility struct {
 	mapp            models.Map
+	graph           Graph
 	currentPlayerID string
 }
 
-func New(m models.Map, currentPlayerID string) MapUtility {
-	return MapUtility{
+func (u *MapUtility) SetGraph(g Graph) {
+	u.graph = g
+}
+
+func New(m models.Map, g Graph, currentPlayerID string) *MapUtility {
+	return &MapUtility{
 		mapp:            m,
 		currentPlayerID: currentPlayerID,
+		graph:           g,
 	}
+}
+
+func GraphOfMap(u MapUtility) Graph {
+	g := dijkstra.NewGraph()
+	maxID := u.mapp.Height * u.mapp.Width
+	for i := 0; i < maxID; i++ {
+		g.AddVertex(i)
+	}
+	for i := 0; i < maxID; i++ {
+		connectedNeighbours := u.inBoundsAccessibleNeighbours(i)
+		for _, n := range connectedNeighbours {
+			err := g.AddArc(i, n, 1)
+			if err != nil {
+				panic("cannot add arc to Graph")
+			}
+		}
+	}
+	return g
 }
 
 // returns true if the current player can perform the given action given no action for all other players
@@ -185,6 +216,97 @@ func (u *MapUtility) ConvertCoordinatesToPositions(coordinates []models.Coordina
 		positions[i] = u.ConvertCoordinatesToPosition(coordinates[i])
 	}
 	return positions
+}
+
+// DistanceTo returns the distance to a specified coordinate from the players current position
+func (u *MapUtility) DistanceTo(destination models.Coordinates) (int, error) {
+	if !u.IsTileAvailableForMovementTo(destination) || u.IsCoordinatesOutOfBounds(destination) {
+		return 0, fmt.Errorf("coordinates are unreachable: %v", destination)
+	}
+
+	myPos := u.GetMe().info.Position
+
+	destinationPos := u.ConvertCoordinatesToPosition(destination)
+	bestPath, err := u.graph.Shortest(myPos, destinationPos)
+	if err != nil {
+		return 0, err
+	}
+
+	// Assuming Width * Height < int.max
+	return int(bestPath.Distance), nil
+}
+
+func (u *MapUtility) DirectionToPoint(p int) models.Action {
+	coord := u.ConvertPositionToCoordinates(p)
+	myCoord := u.GetMyCoordinates()
+
+	if myCoord.X+1 == coord.X &&
+		myCoord.Y == coord.Y {
+		return models.Right
+	}
+
+	if myCoord.X-1 == coord.X &&
+		myCoord.Y == coord.Y {
+		return models.Left
+	}
+
+	if myCoord.X == coord.X &&
+		myCoord.Y-1 == coord.Y {
+		return models.Up
+	}
+
+	if myCoord.X == coord.X &&
+		myCoord.Y+1 == coord.Y {
+		return models.Down
+	}
+
+	panic("p should be a neighbour")
+}
+
+// ShortestPathTo returns the shortest path to the given destination.
+// If the destination is unreachable an error is returned.
+func (u *MapUtility) ShortestPathTo(destination models.Coordinates) ([]int, error) {
+	if !u.IsTileAvailableForMovementTo(destination) || u.IsCoordinatesOutOfBounds(destination) {
+		return nil, fmt.Errorf("coordinates are unreachable: %v", destination)
+	}
+
+	myPos := u.GetMe().info.Position
+	destinationPos := u.ConvertCoordinatesToPosition(destination)
+	g := u.graph
+
+	bestPath, err := g.Shortest(myPos, destinationPos)
+	if err != nil {
+		return nil, err
+	}
+	return bestPath.Path, nil
+}
+
+func (u *MapUtility) IsAnyPlayerWithinExplosionRange() bool {
+	pps := u.getPlayerPositions()
+	pcs := u.ConvertPositionsToCoordinates(pps)
+	myCoord := u.GetMyCoordinates()
+	for _, pc := range pcs {
+		if pc == myCoord {
+			continue
+		}
+		if d, _ := u.DistanceTo(pc); d <= 4 {
+			return true
+		}
+	}
+	return false
+}
+
+func (u *MapUtility) inBoundsAccessibleNeighbours(pos int) []int {
+	coord := u.ConvertPositionToCoordinates(pos)
+
+	var neighbours []int
+	for _, a := range models.Movements {
+		neighbour := u.TranslateCoordinateByAction(a, coord)
+		if !u.IsCoordinatesOutOfBounds(neighbour) && u.IsTileAvailableForMovementTo(neighbour) {
+			neighbours = append(neighbours, u.ConvertCoordinatesToPosition(neighbour))
+		}
+	}
+	return neighbours
 }
 
 func (u *MapUtility) getPlayerPositions() []int {

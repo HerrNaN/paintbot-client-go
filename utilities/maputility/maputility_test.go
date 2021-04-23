@@ -1,6 +1,7 @@
 package maputility
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
 
 	"paintbot-client/models"
@@ -143,4 +144,22 @@ func TestMapUtility_CanIMove(t *testing.T) {
 	if mu.CanIMoveInDirection(models.Right) {
 		t.Fail()
 	}
+}
+
+func Test_GraphOfMap_emptyMapFindsPathAcrossTheMapWithoutErrors(t *testing.T) {
+	mu := MapUtility{
+		mapp: models.Map{Width: 5, Height: 5},
+	}
+	g := GraphOfMap(mu)
+	_, err := g.Shortest(0,24)
+	assert.NoError(t, err)
+}
+
+func Test_GraphOfMap_returnsErrorWhenNoPathExists(t *testing.T) {
+	mu := MapUtility{
+		mapp: models.Map{Width: 5, Height: 5, ObstacleUpPositions: []int{10,11,12,13,14}},
+	}
+	g := GraphOfMap(mu)
+	_, err := g.Shortest(0,24)
+	assert.Error(t, err)
 }
