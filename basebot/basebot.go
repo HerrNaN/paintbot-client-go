@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
@@ -35,7 +36,11 @@ func Start(
 	registerPlayer(conn, playerName, desiredGameSettings)
 
 	handleMapUpdate := func(conn *websocket.Conn, event models.MapUpdateEvent) {
+		s := time.Now()
 		action := calculateMove(state.settings, event)
+		e := time.Now()
+		decisionTime := e.Sub(s)
+		fmt.Printf("[%-3dms] Action: %s\n", decisionTime.Milliseconds(), action)
 		sendMove(conn, event, action)
 	}
 
